@@ -23,6 +23,7 @@ export const VENUES = {
   binanceus: { name: 'Binance.US', type: 'Exchange', site: 'https://www.binance.us' },
   bybit: { name: 'Bybit', type: 'Exchange', site: 'https://www.bybit.com' },
   bitget: { name: 'Bitget', type: 'Exchange', site: 'https://www.bitget.com' },
+  htx: { name: 'HTX', type: 'Exchange', site: 'https://www.htx.com' },
 };
 
 let krakenPairs = null, krakenPairsAt = 0;
@@ -176,6 +177,35 @@ export const READERS = {
         change24h: n(v.change24h) != null ? n(v.change24h) * 100 : null,
         api: `https://api.bitget.com/api/v2/spot/market/tickers?symbol=${v.symbol}`,
         trade: `https://www.bitget.com/spot/${b}${q}`,
+      });
+    }
+    return out;
+  },
+
+  // HTX answers one call with every symbol, and the symbol has no separator: the quote is glued to
+  // the base in lower case (btcusdt, ethusdc). Quotes are matched longest-first so a base ending in
+  // "usd" is not mistaken for a USD pair. price is `close`, base volume is `amount` and quote volume
+  // is `vol`; change24h is not published, so it is derived from close/open. An answer whose status
+  // is not "ok" fails the read.
+  async htx() {
+    const d = await getJSON('https://api.huobi.pro/market/tickers', { timeout: 25000 });
+    if (!d || d.status !== 'ok' || !Array.isArray(d.data)) {
+      throw new Error(`htx tickers: unexpected answer ${JSON.stringify(d).slice(0, 80)}`);
+    }
+    const out = [];
+    for (const v of d.data) {
+      const id = String(v.symbol || '').toLowerCase();
+      const q = ['usdt', 'usdc', 'usd'].find(x => id.endsWith(x) && id.length > x.length);
+      if (!q) continue;
+      const b = id.slice(0, -q.length).toUpperCase();
+      if (!keep(b, q.toUpperCase())) continue;
+      const price = n(v.close), open = n(v.open);
+      out.push({
+        venue: 'htx', base: sym(b), quote: q.toUpperCase(), price,
+        volBase: n(v.amount), volQuote: n(v.vol),
+        change24h: price != null && open ? (price / open - 1) * 100 : null,
+        api: `https://api.huobi.pro/market/tickers`,
+        trade: `https://www.htx.com/en-us/trade/${b.toLowerCase()}_${q}`,
       });
     }
     return out;
