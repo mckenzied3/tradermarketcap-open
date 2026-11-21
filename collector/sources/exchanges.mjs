@@ -23,11 +23,51 @@ export const VENUES = {
   binanceus: { name: 'Binance.US', type: 'Exchange', site: 'https://www.binance.us' },
   bybit: { name: 'Bybit', type: 'Exchange', site: 'https://www.bybit.com' },
   bitget: { name: 'Bitget', type: 'Exchange', site: 'https://www.bitget.com' },
+  gemini: { name: 'Gemini', type: 'Exchange', site: 'https://www.gemini.com' },
 };
 
 let krakenPairs = null, krakenPairsAt = 0;
 
 export const READERS = {
+  // Gemini has no bulk endpoint that carries 24h volume: v1/pricefeed gives every pair
+  // with price and percentChange24h (already a percent, not a fraction), while volume only
+  // exists per symbol on v1/pubticker. So: one pricefeed call for the pair list, price and
+  // change, then bounded-concurrency pubticker calls for volume. A pubticker that fails
+  // leaves that pair's volume null rather than failing the whole read; a pricefeed answer
+  // that is not an array of pairs fails the read.
+  async gemini() {
+    const feed = await getJSON('https://api.gemini.com/v1/pricefeed', { timeout: 25000 });
+    if (!Array.isArray(feed)) throw new Error(`gemini pricefeed: unexpected answer ${JSON.stringify(feed).slice(0, 80)}`);
+    const rows = [];
+    for (const p of feed) {
+      const [b, q] = splitJoined(p.pair);
+      if (!keep(b, q)) continue;
+      rows.push({ symbol: p.pair.toLowerCase(), base: sym(b), quote: q, price: n(p.price), change24h: n(p.percentChange24h) });
+    }
+    const volumes = new Map();
+    let i = 0;
+    const worker = async () => {
+      while (i < rows.length) {
+        const r = rows[i++];
+        try {
+          const t = await getJSON(`https://api.gemini.com/v1/pubticker/${r.symbol}`, { timeout: 15000 });
+          volumes.set(r.symbol, t && t.volume ? t.volume : null);
+        } catch { volumes.set(r.symbol, null); }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, rows.length) }, worker));
+    return rows.map(r => {
+      const vol = volumes.get(r.symbol) || {};
+      return {
+        venue: 'gemini', base: r.base, quote: r.quote, price: r.price,
+        volBase: n(vol[r.base]),
+        volQuote: n(vol[r.quote]), change24h: r.change24h,
+        api: `https://api.gemini.com/v1/pubticker/${r.symbol}`,
+        trade: `https://www.gemini.com/trade/${r.base}${r.quote}`,
+      };
+    });
+  },
+
   async coinbase() {
     const d = await getJSON('https://api.exchange.coinbase.com/products/stats');
     const out = [];

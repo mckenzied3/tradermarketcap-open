@@ -1,0 +1,32 @@
+[
+ {
+  "pair": "ALIUSD",
+  "price": "0.000886",
+  "percentChange24h": "-0.0199"
+ },
+ {
+  "pair": "DRIFTRLUSD",
+  "price": "0.0085",
+  "percentChange24h": "-0.0230"
+ },
+ {
+  "pair": "SUIUSDC",
+  "price": "0.6492",
+  "percentChange24h": "-0.0048"
+ },
+ {
+  "pair": "JTOUSD",
+  "price": "0.2236",
+  "percentChange24h": "-0.0541"
+ },
+ {
+  "pair": "HYPEUSDC",
+  "price": "61.3448",
+  "percentChange24h": "-0.0027"
+ },
+ {
+  "pair": "BONKUSDC",
+  "price": "0.00000204",
+  "percentChange24h": "-0.0216"
+ }
+]
