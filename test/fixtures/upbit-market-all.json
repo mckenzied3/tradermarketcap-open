@@ -1,0 +1,22 @@
+[
+ {
+  "market": "USDT-PEPE",
+  "korean_name": "\ud398\ud398",
+  "english_name": "Pepe"
+ },
+ {
+  "market": "USDT-WCT",
+  "korean_name": "\uc6d4\ub81b\ucee4\ub125\ud2b8",
+  "english_name": "WalletConnect"
+ },
+ {
+  "market": "USDT-DOGE",
+  "korean_name": "\ub3c4\uc9c0\ucf54\uc778",
+  "english_name": "Dogecoin"
+ },
+ {
+  "market": "USDT-AXL",
+  "korean_name": "\uc5d1\uc140\ub77c",
+  "english_name": "Axelar"
+ }
+]

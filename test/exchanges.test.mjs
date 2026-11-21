@@ -61,3 +61,50 @@ test('bitget: an error answer (code not 00000) fails the read', async () => {
   await assert.rejects(READERS.bitget(), /code 40017/);
 });
 
+
+// Upbit needs two endpoints; route by URL so the market-list and ticker paths are both exercised.
+function routedFetch(routes) {
+  const urls = [];
+  globalThis.fetch = async url => {
+    const u = String(url);
+    urls.push(u);
+    const hit = Object.keys(routes).find(k => u.includes(k));
+    if (!hit) return new Response('{"error":{"name":"not_found"}}', { status: 404 });
+    return new Response(JSON.stringify(routes[hit]), { status: 200 });
+  };
+  return urls;
+}
+
+const upbitMarkets = () => JSON.parse(readFileSync(new URL('./fixtures/upbit-market-all.json', import.meta.url), 'utf8'));
+const upbitTickers = () => JSON.parse(readFileSync(new URL('./fixtures/upbit-ticker.json', import.meta.url), 'utf8'));
+
+test('upbit: USDT markets only, batched ticker call, volume in both currencies', async () => {
+  const markets = upbitMarkets();
+  const tickers = upbitTickers();
+  const urls = routedFetch({ '/v1/market/all': markets, '/v1/ticker?markets=': tickers });
+  const ms = await READERS.upbit();
+  assert.ok(VENUES.upbit);
+  assert.equal(urls[0], 'https://api.upbit.com/v1/market/all');
+  assert.match(urls[1], /^https:\/\/api\.upbit\.com\/v1\/ticker\?markets=USDT-/);
+  assert.ok(ms.length > 0);
+  for (const m of ms) {
+    assert.equal(m.venue, 'upbit');
+    assert.equal(m.quote, 'USDT');
+    assert.equal(typeof m.price, 'number');
+    assert.match(m.api, /^https:\/\/api\.upbit\.com\/v1\/ticker\?markets=USDT-[A-Z0-9]+$/);
+    assert.match(m.trade, /^https:\/\/upbit\.com\/exchange\?code=CRIX\.UPBIT\.USDT-[A-Z0-9]+$/);
+  }
+  const first = tickers[0];
+  const [q, b] = first.market.split('-');
+  const row = ms.find(m => m.base === b && m.quote === q);
+  assert.ok(row);
+  assert.equal(row.volBase, first.acc_trade_volume_24h);
+  assert.equal(row.volQuote, first.acc_trade_price_24h);
+  // signed_change_rate is a fraction on Upbit; it must be shown as a percentage.
+  assert.ok(Math.abs(row.change24h - first.signed_change_rate * 100) < 1e-9);
+});
+
+test('upbit: a non-array market list fails the read', async () => {
+  routedFetch({ '/v1/market/all': { error: { name: 'invalid_parameter', message: 'bad' } } });
+  await assert.rejects(READERS.upbit(), /upbit market list/);
+});

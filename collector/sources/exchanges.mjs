@@ -23,6 +23,7 @@ export const VENUES = {
   binanceus: { name: 'Binance.US', type: 'Exchange', site: 'https://www.binance.us' },
   bybit: { name: 'Bybit', type: 'Exchange', site: 'https://www.bybit.com' },
   bitget: { name: 'Bitget', type: 'Exchange', site: 'https://www.bitget.com' },
+  upbit: { name: 'Upbit', type: 'Exchange', site: 'https://upbit.com' },
 };
 
 let krakenPairs = null, krakenPairsAt = 0;
@@ -176,6 +177,31 @@ export const READERS = {
         change24h: n(v.change24h) != null ? n(v.change24h) * 100 : null,
         api: `https://api.bitget.com/api/v2/spot/market/tickers?symbol=${v.symbol}`,
         trade: `https://www.bitget.com/spot/${b}${q}`,
+      });
+    }
+    return out;
+  },
+  // Upbit's ticker endpoint needs an explicit market list, so this reads /v1/market/all first and
+  // keeps only USDT- prefixed markets (the BTC- and KRW- markets are not USD-quoted and are skipped).
+  // One batched ticker call then returns every pair. change_rate is a fraction there, so it is
+  // multiplied by 100; acc_trade_volume_24h is the base volume and acc_trade_price_24h the quote volume.
+  async upbit() {
+    const markets = await getJSON('https://api.upbit.com/v1/market/all', { timeout: 25000 });
+    if (!Array.isArray(markets)) throw new Error(`upbit market list: unexpected answer ${JSON.stringify(markets).slice(0, 80)}`);
+    const wanted = markets.map(m => m && m.market).filter(m => typeof m === 'string' && m.startsWith('USDT-'));
+    if (!wanted.length) return [];
+    const d = await getJSON(`https://api.upbit.com/v1/ticker?markets=${wanted.join(',')}`, { timeout: 25000 });
+    if (!Array.isArray(d)) throw new Error(`upbit ticker: unexpected answer ${JSON.stringify(d).slice(0, 80)}`);
+    const out = [];
+    for (const v of d) {
+      const [q, b] = String(v.market || '').split('-');
+      if (!keep(sym(b), q)) continue;
+      out.push({
+        venue: 'upbit', base: sym(b), quote: q, price: n(v.trade_price),
+        volBase: n(v.acc_trade_volume_24h), volQuote: n(v.acc_trade_price_24h),
+        change24h: n(v.signed_change_rate) != null ? n(v.signed_change_rate) * 100 : null,
+        api: `https://api.upbit.com/v1/ticker?markets=${v.market}`,
+        trade: `https://upbit.com/exchange?code=CRIX.UPBIT.${v.market}`,
       });
     }
     return out;
